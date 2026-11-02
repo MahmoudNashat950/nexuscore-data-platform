@@ -19,7 +19,8 @@ The initial POC supports:
 
 ```mermaid
 ER Diagram
-    d:\Downloadss\mermaid-diagram.png
+   <img width="2016" height="2582" alt="mermaid-diagram" src="https://github.com/user-attachments/assets/3e95072e-28ec-478a-bf7f-93efc151d64e" />
+
 ```
 
 ## 3. Table Definitions
