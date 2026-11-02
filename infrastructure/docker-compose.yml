@@ -1,0 +1,27 @@
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: nexuscore-mosquitto
+    restart: unless-stopped
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/config:/mosquitto/config
+      - ./mosquitto/data:/mosquitto/data
+      - ./mosquitto/log:/mosquitto/log
+
+  timescaledb:
+    image: timescale/timescaledb:2.23.0-pg17
+    container_name: nexuscore-timescaledb
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nexuscore
+      POSTGRES_USER: nexuscore
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    ports:
+      - "5432:5432"
+    volumes:
+      - nexuscore_db_data:/var/lib/postgresql/data
+
+volumes:
+  nexuscore_db_data:

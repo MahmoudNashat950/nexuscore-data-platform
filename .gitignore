@@ -1,0 +1,21 @@
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Logs and generated data
+*.log
+infrastructure/mosquitto/data/
+infrastructure/mosquitto/log/
+
+# Editors and operating systems
+.vscode/
+.idea/
+.DS_Store
