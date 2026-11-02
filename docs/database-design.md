@@ -1,7 +1,7 @@
 # NexusCore — Database Design
 
-**Status:** Approved conceptual design  
-**Database:** PostgreSQL + TimescaleDB  
+- **Status:** Approved conceptual design
+- **Database:** PostgreSQL + TimescaleDB  
 **Schema version:** Initial POC
 
 ## 1. Overview
