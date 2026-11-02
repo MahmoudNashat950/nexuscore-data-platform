@@ -17,11 +17,7 @@ The initial POC supports:
 
 ## 2. Entity Relationship Diagram
 
-```mermaid
-ER Diagram
-   <img width="2016" height="2582" alt="mermaid-diagram" src="https://github.com/user-attachments/assets/3e95072e-28ec-478a-bf7f-93efc151d64e" />
-
-```
+![NexusCore Entity Relationship Diagram](https://github.com/user-attachments/assets/3e95072e-28ec-478a-bf7f-93efc151d64e)
 
 ## 3. Table Definitions
 
