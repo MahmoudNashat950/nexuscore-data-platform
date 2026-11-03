@@ -1,0 +1,10 @@
+annotated-types==0.8.0
+paho-mqtt==2.1.0
+psycopg==3.3.7
+psycopg-binary==3.3.7
+psycopg-pool==3.3.3
+pydantic==2.12.5
+pydantic_core==2.41.5
+python-dotenv==1.2.4
+typing-inspection==0.4.4
+typing_extensions==4.16.0

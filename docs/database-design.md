@@ -1,8 +1,8 @@
 # NexusCore — Database Design
 
-- **Status:** Approved conceptual design
+- **Status:** POC schema implemented; alerts and retention policies remain planned
 - **Database:** PostgreSQL + TimescaleDB
-**Schema version:** Initial POC
+**Schema version:** Initial POC — Migrations 001–003
 
 ## 1. Overview
 
@@ -41,39 +41,54 @@ The initial POC supports:
 | address | TEXT | NULL |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() |
 
+**Additional constraints:**
+- UNIQUE (tenant_id, site_id)
+
 #### buildings
 
 | Column | Type | Constraints |
 |---|---|---|
 | building_id | UUID | PK, DEFAULT gen_random_uuid() |
-| site_id | UUID | NOT NULL, FK → sites |
+| tenant_id | UUID | NOT NULL |
+| site_id | UUID | NOT NULL |
 | name | VARCHAR(150) | NOT NULL |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() |
+
+**Additional constraints:**
+- FK (tenant_id, site_id) → sites (tenant_id, site_id)
+- UNIQUE (tenant_id, site_id, building_id)
 
 #### floors
 
 | Column | Type | Constraints |
 |---|---|---|
 | floor_id | UUID | PK, DEFAULT gen_random_uuid() |
-| building_id | UUID | NOT NULL, FK → buildings |
+| tenant_id | UUID | NOT NULL |
+| site_id | UUID | NOT NULL |
+| building_id | UUID | NOT NULL |
 | name | VARCHAR(100) | NOT NULL |
 | floor_number | INTEGER | NOT NULL |
+
+**Additional constraints:**
+- FK (tenant_id, site_id, building_id) → buildings
+- UNIQUE (tenant_id, site_id, building_id, floor_id)
+- UNIQUE (building_id, floor_number)
 
 #### rooms
 
 | Column | Type | Constraints |
 |---|---|---|
 | room_id | UUID | PK, DEFAULT gen_random_uuid() |
-| floor_id | UUID | NOT NULL, FK → floors |
+| tenant_id | UUID | NOT NULL |
+| site_id | UUID | NOT NULL |
+| building_id | UUID | NOT NULL |
+| floor_id | UUID | NOT NULL |
 | name | VARCHAR(100) | NOT NULL |
 | room_type | VARCHAR(50) | NOT NULL, CHECK |
 
-Allowed room types:
-- office
-- meeting_room
-- corridor
-- equipment_room
-- server_room
+**Additional constraints:**
+- FK (tenant_id, site_id, building_id, floor_id) → floors
+- UNIQUE (tenant_id, site_id, room_id)
 
 ### 3.2 Device management
 
@@ -87,49 +102,32 @@ Allowed room types:
 | site_id | UUID | NOT NULL |
 | room_id | UUID | NOT NULL |
 | device_type | VARCHAR(50) | NOT NULL, CHECK |
-| lifecycle_status | VARCHAR(20) | NOT NULL, CHECK |
-| installed_at | TIMESTAMPTZ | NOT NULL |
+| lifecycle_status | VARCHAR(20) | NOT NULL, DEFAULT 'active', CHECK |
+| installed_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() |
 | firmware_version | VARCHAR(50) | NULL |
 | created_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() |
 
-Allowed device types:
-- environmental_sensor
-- energy_meter
-- occupancy_sensor
-- smart_lighting
-- hvac
+**Additional constraints:**
+- FK (tenant_id, site_id, room_id) → rooms (tenant_id, site_id, room_id)
+- CHECK device_type against the five supported device types.
+- CHECK lifecycle_status against active, disabled, retired.
 
-Allowed lifecycle statuses:
-- active
-- disabled
-- retired
-
-`tenant_id` and `site_id` are deliberately stored in `devices` for efficient filtering and authorization.
-
-Composite foreign keys or equivalent database constraints must ensure that the device's tenant, site, and room belong to the same hierarchy.
+**Indexes:**
+- (tenant_id, site_id, room_id)
+- (device_type, lifecycle_status)
 
 #### device_state
 
 | Column | Type | Constraints |
 |---|---|---|
-| device_id | UUID | PK, FK → devices |
-| connectivity_status | VARCHAR(10) | NOT NULL, CHECK |
+| device_id | UUID | PK, FK → devices, ON DELETE CASCADE |
+| connectivity_status | VARCHAR(10) | NOT NULL, DEFAULT 'offline', CHECK |
 | last_seen_at | TIMESTAMPTZ | NULL |
 | last_event_timestamp | TIMESTAMPTZ | NULL |
 | latest_measurements | JSONB | NULL |
 | offline_since | TIMESTAMPTZ | NULL |
 | recovered_at | TIMESTAMPTZ | NULL |
 | updated_at | TIMESTAMPTZ | NOT NULL, DEFAULT NOW() |
-
-Allowed connectivity statuses:
-- online
-- offline
-
-Every registered device must have exactly one state record, created in the same transaction as device registration. Its initial connectivity status is offline.
-
-A device becomes offline after more than 30 seconds without successfully processed telemetry.
-
-Late events must not overwrite newer device-state readings.
 
 ### 3.3 Telemetry and data quality
 
@@ -253,22 +251,28 @@ An alert may also transition directly from active to resolved.
 
 ## 5. Initial Indexing Strategy
 
-Create indexes for common query patterns:
+### Implemented indexes
 
-- `devices(tenant_id, site_id, room_id)`
-- `devices(device_type, lifecycle_status)`
-- `telemetry(device_id, timestamp DESC)`
-- `telemetry(timestamp DESC)`
-- `alerts(tenant_id, status, created_at DESC)`
-- `alerts(device_id, created_at DESC)`
-- `alerts(room_id, created_at DESC)`
-- `alerts(building_id, created_at DESC)`
-- `telemetry_quarantine(ingested_at DESC)`
+| Table | Index | Purpose |
+|---|---|---|
+| devices | (tenant_id, site_id, room_id) | Hierarchy filtering |
+| devices | (device_type, lifecycle_status) | Device filtering |
+| telemetry | (device_id, timestamp DESC) | Device history queries |
+| telemetry | TimescaleDB timestamp index | Time-based queries |
+| event_deduplication | PRIMARY KEY (event_id) | Global event deduplication |
+| event_deduplication | (processed_at) | Deduplication retention management |
+| telemetry_quarantine | (ingested_at DESC) | Recent quarantine records |
 
-The `event_deduplication.event_id` primary key already provides an index.
+### Planned indexes
+
+The following indexes will be added when the alerts table is implemented:
+
+- alerts(tenant_id, status, created_at DESC)
+- alerts(device_id, created_at DESC)
+- alerts(room_id, created_at DESC)
+- alerts(building_id, created_at DESC)
 
 Avoid unnecessary indexes until actual query performance demonstrates a need.
-
 ## 6. Data Retention
 
 | Table | Retention |
@@ -285,6 +289,17 @@ TimescaleDB retention policies will automatically remove expired telemetry chunk
 Deduplication retention must cover the expected retry and replay window. Replays after deduplication records expire may be inserted again.
 
 Quarantine records may be preserved for investigation.
+
+**Implementation status:**
+
+The retention periods above are design targets and have not yet been
+configured as automatic database retention policies.
+
+The telemetry and deduplication tables currently have no automatic
+retention jobs. Quarantine records are also retained until a cleanup
+policy is implemented.
+
+Retention policies will be configured and tested in a later phase.
 
 ## 7. Ingestion Transaction
 
@@ -319,7 +334,36 @@ If database persistence fails, do not send the application-level acknowledgment.
 - SQL implementation must validate all constraints and relationships.
 - Retention policies must be tested with late-arriving events and replay behavior.
 
-## 9. Future Extensions
+
+## 9. Implementation Status
+
+### Implemented
+
+| Component | Migration | Status |
+|---|---|---|
+| Organization hierarchy | 001 | Implemented |
+| Device management | 002 | Implemented |
+| Automatic device-state creation | 002 | Implemented |
+| Telemetry hypertable | 003 | Implemented |
+| Event deduplication table | 003 | Implemented |
+| Telemetry quarantine table | 003 | Implemented |
+| Python telemetry schemas | — | Implemented |
+| Database connection pool | — | Implemented |
+| Telemetry persistence repository | — | Implemented |
+| Schema validation tests | — | 7 tests passing |
+
+### Planned / Not Yet Implemented
+
+- Alerts database table.
+- MQTT subscriber and message acknowledgment.
+- Database-backed device and tenant/site validation.
+- Quarantine processing.
+- Device offline-status monitoring.
+- Automatic data-retention policies.
+- Integration and end-to-end tests.
+
+
+##10. Future Extensions
 
 Possible future additions:
 - Continuous aggregates for long-term analytics.
